@@ -1,0 +1,10 @@
+google-generativeai
+sentence-transformers
+faiss-cpu
+python-dotenv
+pandas
+tqdm
+transformers
+peft
+trl
+bitsandbytes
