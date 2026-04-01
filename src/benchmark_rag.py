@@ -2,7 +2,9 @@
 """
 RAG Model Benchmark Script
 
-Evaluates RAG (Retrieval-Augmented Generation) models using vector store retrieval.
+This script evaluates RAG (Retrieval-Augmented Generation) models on the synthetic QA dataset.
+For each question, it retrieves relevant context from the vector store, augments the prompt,
+and evaluates the model's response with access to relevant background information.
 """
 
 import json
@@ -11,7 +13,9 @@ import os
 import time
 from datetime import datetime
 from typing import List, Dict
+from pathlib import Path
 
+# Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tqdm import tqdm
@@ -21,38 +25,46 @@ from src.model_client import GeminiClient
 
 
 class RAGBenchmark:
-    """Benchmark RAG-augmented model on QA dataset."""
+    """Benchmark RAG-augmented model on QA dataset with context retrieval."""
     
     def __init__(self):
-        """Initialize RAG benchmark."""
+        """Initialize RAG benchmark with vector store and Gemini client."""
         print("="*70)
         print("RAG MODEL BENCHMARK INITIALIZATION")
         print("="*70)
         
+        # Initialize Vector Store
         print("\nInitializing Vector Store...")
         self.vector_store = VectorStore(model_name='all-MiniLM-L6-v2')
         
+        # Load or build vector index
         index_path = os.path.join(Config.PROCESSED_DATA, "vector_index.faiss")
         if os.path.exists(index_path):
-            print(f"Loading pre-built index...")
+            print(f"Loading pre-built index from {index_path}...")
             self.vector_store.load_index(index_path)
             print("✓ Vector Store loaded")
         else:
-            print("Building vector index...")
+            print("Building vector index from raw documents...")
             input_dir = os.path.join(Config.BASE_DIR, "data/raw")
-            self.vector_store.add_documents(input_dir, chunk_size=500, chunk_overlap=100)
+            self.vector_store.add_documents(
+                directory_path=input_dir,
+                chunk_size=500,
+                chunk_overlap=100
+            )
             self.vector_store.save_index(index_path)
-            print("✓ Vector Store built")
+            print("✓ Vector Store built and saved")
         
+        # Initialize Gemini Client
         print("\nInitializing Gemini Client...")
         self.client = GeminiClient()
         print("✓ Gemini Client initialized")
         
+        # Load QA dataset
         qa_path = os.path.join(Config.PROCESSED_DATA, "synthetic_qa.json")
-        print(f"Loading QA dataset...")
+        print(f"Loading QA dataset from {qa_path}...")
         
         if not os.path.exists(qa_path):
-            raise ValueError(f"QA dataset not found")
+            raise ValueError(f"QA dataset not found at {qa_path}")
         
         with open(qa_path, 'r', encoding='utf-8') as f:
             self.dataset = json.load(f)
@@ -60,6 +72,7 @@ class RAGBenchmark:
         self.qa_pairs = self.dataset.get('qa_pairs', [])
         print(f"✓ Loaded {len(self.qa_pairs)} QA pairs")
         
+        # Initialize results storage
         self.results = []
         self.errors = []
         self.retrieval_stats = {
@@ -69,21 +82,35 @@ class RAGBenchmark:
             'avg_similarity': 0.0
         }
         
+        # Metadata
         self.start_time = None
         self.end_time = None
     
     def format_context(self, retrieved_chunks: List[Dict]) -> str:
-        """Format retrieved chunks into context string."""
+        """
+        Format retrieved chunks into a single context string.
+        
+        Each chunk is labeled with its source file for clarity.
+        
+        Args:
+            retrieved_chunks: List of result dictionaries from vector store
+            
+        Returns:
+            Formatted context string
+        """
         if not retrieved_chunks:
             return "No relevant context found."
         
-        formatted_parts = ["=== RETRIEVED CONTEXT ===\n"]
+        formatted_parts = [
+            "=== RETRIEVED CONTEXT ===\n"
+        ]
         
         for i, chunk in enumerate(retrieved_chunks, 1):
             source_file = chunk.get('source_file', 'Unknown')
             similarity = chunk.get('similarity_score', 0.0)
             text = chunk.get('chunk_text', '')
             
+            # Create clearly labeled section for each chunk
             formatted_parts.append(
                 f"\n[Context {i}] Source: {source_file} (Relevance: {similarity:.3f})\n"
                 f"---\n"
@@ -96,12 +123,21 @@ class RAGBenchmark:
         return "\n".join(formatted_parts)
     
     def construct_augmented_prompt(self, question: str, context: str) -> str:
-        """Construct prompt combining question with retrieved context."""
-        augmented_prompt = f"""You are an expert assistant answering questions about machine learning.
+        """
+        Construct a prompt that combines question with retrieved context.
+        
+        Args:
+            question: The original question
+            context: The formatted context from vector store
+            
+        Returns:
+            Augmented prompt string
+        """
+        augmented_prompt = f"""You are an expert assistant answering questions about machine learning and transformers.
 
 {context}
 
-Based on the context provided, answer the following question:
+Based on the context provided above, answer the following question. If the context doesn't contain relevant information, acknowledge that and provide your best answer based on your knowledge.
 
 Question: {question}
 
@@ -109,8 +145,19 @@ Answer:"""
         
         return augmented_prompt
     
-    def run_benchmark(self, num_samples: int = None, rate_limit_delay: float = 2.0) -> List[Dict]:
-        """Run RAG benchmark on QA dataset."""
+    def run_benchmark(self, num_samples: int = None, rate_limit_delay: float = 2.0, 
+                      quota_retry_delay: float = 60.0) -> List[Dict]:
+        """
+        Run RAG benchmark on QA dataset.
+        
+        Args:
+            num_samples: Number of QA pairs to benchmark (None = all)
+            rate_limit_delay: Seconds to wait between API calls
+            quota_retry_delay: Seconds to wait when quota is exceeded
+            
+        Returns:
+            List of result dictionaries
+        """
         if num_samples is None:
             num_samples = len(self.qa_pairs)
         
@@ -120,10 +167,13 @@ Answer:"""
         print("RAG MODEL BENCHMARK EXECUTION")
         print("="*70)
         print(f"Evaluating {num_samples} QA pairs with RAG augmentation")
+        print(f"Rate limit delay: {rate_limit_delay}s between calls")
+        print(f"Quota retry delay: {quota_retry_delay}s on 429 errors")
         print(f"{'='*70}\n")
         
         self.start_time = datetime.now()
         
+        # Process each QA pair
         for idx, qa_pair in enumerate(tqdm(
             self.qa_pairs[:num_samples],
             desc="RAG Benchmarking",
@@ -134,6 +184,7 @@ Answer:"""
             ground_truth = qa_pair.get('answer', '')
             source_file = qa_pair.get('source_file', '')
             difficulty = qa_pair.get('difficulty', 'Unknown')
+            reasoning_path = qa_pair.get('reasoning_path', '')
             
             max_retries = 3
             retry_count = 0
@@ -141,7 +192,7 @@ Answer:"""
             
             while retry_count < max_retries and not success:
                 try:
-                    # Step 1: Retrieve context
+                    # Step 1: Retrieve relevant context
                     retrieved_chunks = self.vector_store.retrieve(question, k=3)
                     self.retrieval_stats['total_retrievals'] += 1
                     self.retrieval_stats['successful_retrievals'] += 1
@@ -150,8 +201,10 @@ Answer:"""
                     if retrieved_chunks:
                         similarities = [chunk.get('similarity_score', 0) for chunk in retrieved_chunks]
                         avg_sim = sum(similarities) / len(similarities)
-                    else:
-                        avg_sim = 0.0
+                        self.retrieval_stats['avg_similarity'] = (
+                            (self.retrieval_stats['avg_similarity'] * (self.retrieval_stats['successful_retrievals'] - 1) + avg_sim) 
+                            / self.retrieval_stats['successful_retrievals']
+                        )
                     
                     # Step 2: Format context
                     formatted_context = self.format_context(retrieved_chunks)
@@ -159,7 +212,7 @@ Answer:"""
                     # Step 3: Construct augmented prompt
                     augmented_prompt = self.construct_augmented_prompt(question, formatted_context)
                     
-                    # Step 4: Call model
+                    # Step 4: Call model with augmented prompt
                     model_response = self.client.generate(augmented_prompt)
                     
                     # Store result
@@ -170,9 +223,10 @@ Answer:"""
                         'rag_response': model_response,
                         'retrieved_context_count': len(retrieved_chunks),
                         'retrieved_sources': [chunk['source_file'] for chunk in retrieved_chunks],
-                        'avg_retrieval_score': avg_sim,
+                        'avg_retrieval_score': avg_sim if retrieved_chunks else 0.0,
                         'source_file': source_file,
                         'difficulty': difficulty,
+                        'reasoning_path': reasoning_path,
                         'timestamp': datetime.now().isoformat(),
                         'success': True
                     }
@@ -180,19 +234,24 @@ Answer:"""
                     self.results.append(result)
                     success = True
                     
-                    print(f"\n  ✓ Retrieved {len(retrieved_chunks)} chunks")
+                    # Logging
+                    print(f"\n  ✓ [{idx + 1}] Retrieved {len(retrieved_chunks)} chunks, "
+                          f"avg similarity: {avg_sim:.3f}" if retrieved_chunks else "")
                     
+                    # Rate limiting
                     time.sleep(rate_limit_delay)
                 
                 except Exception as e:
                     error_msg = str(e)
                     
+                    # Check for quota error (429)
                     if '429' in error_msg or 'quota' in error_msg.lower():
                         retry_count += 1
                         if retry_count < max_retries:
-                            print(f"\n  ⚠ Quota exceeded. Waiting 60s...")
-                            time.sleep(60.0)
+                            print(f"\n  ⚠ Quota exceeded. Waiting {quota_retry_delay}s before retry...")
+                            time.sleep(quota_retry_delay)
                         else:
+                            # Max retries exceeded
                             error_record = {
                                 'id': f"rag_q_{idx + 1:03d}",
                                 'question': question[:100],
@@ -201,8 +260,9 @@ Answer:"""
                             }
                             self.errors.append(error_record)
                             self.retrieval_stats['failed_retrievals'] += 1
-                            success = True
+                            success = True  # Move to next question
                     else:
+                        # Other error
                         error_record = {
                             'id': f"rag_q_{idx + 1:03d}",
                             'question': question[:100],
@@ -219,12 +279,22 @@ Answer:"""
         return self.results
     
     def save_results(self, output_dir: str = None) -> str:
-        """Save benchmark results to JSON file."""
+        """
+        Save benchmark results to JSON file.
+        
+        Args:
+            output_dir: Directory to save results (default: data/results/)
+            
+        Returns:
+            Path to saved results file
+        """
         if output_dir is None:
             output_dir = os.path.join(Config.BASE_DIR, "data/results")
         
+        # Create directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
         
+        # Prepare output data
         duration = (self.end_time - self.start_time).total_seconds() if self.end_time else 0
         
         output_data = {
@@ -232,10 +302,13 @@ Answer:"""
                 "benchmark_type": "RAG Model Evaluation",
                 "model": "gemini-1.5-flash with FAISS retrieval",
                 "dataset": "synthetic_qa.json",
+                "vector_store": "all-MiniLM-L6-v2 embeddings",
                 "total_questions": len(self.qa_pairs),
                 "questions_evaluated": len(self.results),
                 "questions_failed": len(self.errors),
                 "timestamp": datetime.now().isoformat(),
+                "start_time": self.start_time.isoformat() if self.start_time else None,
+                "end_time": self.end_time.isoformat() if self.end_time else None,
                 "duration_seconds": duration,
                 "success_rate": (len(self.results) / (len(self.results) + len(self.errors)) * 100) if (len(self.results) + len(self.errors)) > 0 else 0
             },
@@ -244,6 +317,7 @@ Answer:"""
             "errors": self.errors
         }
         
+        # Save to JSON
         output_path = os.path.join(output_dir, "rag_model_results.json")
         
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -256,9 +330,9 @@ Answer:"""
         return output_path
     
     def print_summary(self) -> None:
-        """Print benchmark summary."""
+        """Print benchmark summary statistics."""
         if not self.results and not self.errors:
-            print("No results")
+            print("No results to summarize")
             return
         
         duration = (self.end_time - self.start_time).total_seconds() if self.end_time else 0
@@ -271,29 +345,74 @@ Answer:"""
         print("RAG MODEL BENCHMARK SUMMARY")
         print("="*70)
         print(f"Questions evaluated: {success_count}")
-        print(f"Failed: {error_count}")
+        print(f"Failed evaluations: {error_count}")
+        print(f"Total: {total}")
         print(f"Success rate: {success_rate:.1f}%")
-        print(f"Duration: {duration:.1f}s")
+        print(f"Duration: {duration:.1f} seconds")
+        print(f"Avg time per question: {duration / success_count:.1f}s" if success_count > 0 else "N/A")
+        
         print(f"\nRetrieval Statistics:")
-        print(f"  Successful: {self.retrieval_stats['successful_retrievals']}")
-        print(f"  Failed: {self.retrieval_stats['failed_retrievals']}")
-        print(f"  Avg similarity: {self.retrieval_stats['avg_similarity']:.4f}")
+        print(f"  Total retrievals: {self.retrieval_stats['total_retrievals']}")
+        print(f"  Successful retrievals: {self.retrieval_stats['successful_retrievals']}")
+        print(f"  Failed retrievals: {self.retrieval_stats['failed_retrievals']}")
+        print(f"  Avg similarity score: {self.retrieval_stats['avg_similarity']:.4f}")
+        
         print(f"{'='*70}\n")
+    
+    def print_sample_results(self, num_samples: int = 3) -> None:
+        """
+        Print sample results for review.
+        
+        Args:
+            num_samples: Number of results to print
+        """
+        if not self.results:
+            print("No results to display")
+            return
+        
+        print("\n" + "="*70)
+        print(f"SAMPLE RAG MODEL RESPONSES (First {min(num_samples, len(self.results))})")
+        print("="*70)
+        
+        for result in self.results[:num_samples]:
+            print(f"\n[{result['id']}] {result['source_file']} - {result['difficulty']}")
+            print(f"Question:\n{result['question']}\n")
+            print(f"Ground Truth:\n{result['ground_truth'][:200]}...\n")
+            print(f"Retrieved Context Count: {result['retrieved_context_count']}")
+            print(f"Retrieved Sources: {', '.join(result['retrieved_sources'])}")
+            print(f"Avg Retrieval Score: {result['avg_retrieval_score']:.4f}\n")
+            print(f"RAG Response:\n{result['rag_response'][:200]}...\n")
+            print("-" * 70)
 
 
 def main():
-    """Main execution."""
+    """Main execution function."""
     
     try:
+        # Initialize RAG benchmark
         benchmark = RAGBenchmark()
-        results = benchmark.run_benchmark(num_samples=None, rate_limit_delay=2.0)
+        
+        # Run benchmark (using all QA pairs)
+        results = benchmark.run_benchmark(
+            num_samples=None,  # Use all available QA pairs
+            rate_limit_delay=2.0,
+            quota_retry_delay=60.0
+        )
+        
+        # Print summary
         benchmark.print_summary()
+        
+        # Print sample results
+        benchmark.print_sample_results(num_samples=2)
+        
+        # Save results
         output_path = benchmark.save_results()
+        
         print(f"✓ RAG Benchmark complete!")
-        print(f"Results: {output_path}")
+        print(f"Results saved to: {output_path}")
         
     except Exception as e:
-        print(f"✗ Failed: {str(e)}")
+        print(f"✗ RAG Benchmark failed: {str(e)}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
