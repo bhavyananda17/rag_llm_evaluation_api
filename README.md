@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
----
+
 
 ## 🎯 Overview
 
@@ -640,6 +640,5 @@ Get results in **~10 minutes**! 🚀
 
 ---
 
-**Made with ❤️ by ML Engineering Team**  
 **Last Updated**: April 2026  
 **Status**: Production Ready ✅
