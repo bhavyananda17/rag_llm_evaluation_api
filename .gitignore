@@ -1,7 +1,54 @@
-venv/
+# =========================
+# Environment & Secrets
+# =========================
 .env
+.venv/
+venv/
+
+# =========================
+# Python Artifacts
+# =========================
 __pycache__/
-*.pyc
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+build/
+dist/
+
+# =========================
+# OS / Editor Files
+# =========================
 .DS_Store
-data/
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Logs & Generated Outputs
+# =========================
+*.log
 outputs/
+
+# =========================
+# Generated Data (ignore caches, logs, results - but keep raw/)
+# =========================
+data/cache/
+data/logs/
+data/results/
+data/exports/
+data/processed/*.faiss
+data/processed/*.jsonl
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+notebooks/__pycache__/
+
+# =========================
+# Archives
+# =========================
+docs/archive/

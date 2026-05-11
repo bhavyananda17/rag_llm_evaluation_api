@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-04-01T11:18:07.428943",
+  "total_examples": 13,
+  "token_budget": 1024,
+  "statistics": {
+    "within_budget": 13,
+    "truncated": 0,
+    "avg_tokens": 54
+  }
+}
