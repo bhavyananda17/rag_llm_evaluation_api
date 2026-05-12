@@ -356,15 +356,7 @@ rag_llm_evaluation_api/
 
 ---
 
-## 🔍 Impact & Improvements
 
-### Token Optimization
-
-We implemented token-aware prompt engineering:
-- **Base Request**: ~450 tokens
-- **RAG Request**: ~1,200 tokens (context injected)
-- **Trade-off**: 2.67x token increase → 26.6% accuracy improvement
-- **ROI**: Positive (accuracy gains > cost increase)
 
 ### Adversarial Quality Assurance
 
