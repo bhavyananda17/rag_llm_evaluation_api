@@ -352,95 +352,7 @@ rag_llm_evaluation_api/
 └── requirements.txt
 ```
 
----
 
-## 🏃 Advanced Usage
-
-### Run with LoRA (40 minutes including training)
-
-```bash
-# Prepare training data
-python3 src/prep_lora_data.py
-
-# Train LoRA adapters (10-15 minutes on M1/M2/M3)
-python3 run_lora_pipeline.py
-
-# Run full triple comparison including LoRA
-python3 run_comparison.py --with-lora
-
-# Judge and analyze
-python3 src/judge_metrics.py
-python3 evaluation_metrics.py
-```
-
-### Custom Evaluation
-
-```python
-import json
-from src.evaluator import ModelEvaluator
-from src.judge_metrics import JudgeMetrics
-
-# Load your own QA pairs
-with open('data/processed/synthetic_qa.json') as f:
-    qa_data = json.load(f)
-
-evaluator = ModelEvaluator()
-judge = JudgeMetrics()
-
-# Get responses from all three models
-for qa_pair in qa_data['qa_pairs']:
-    question = qa_pair['question']
-    ground_truth = qa_pair['answer']
-    
-    # Get responses
-    base_response = evaluator.get_answer(question, mode='base')
-    rag_response = evaluator.get_answer(question, mode='rag')
-    
-    # Judge them
-    base_score = judge.judge_response(ground_truth, base_response)
-    rag_score = judge.judge_response(ground_truth, rag_response)
-    
-    print(f"Q: {question[:50]}...")
-    print(f"  Base: {base_score['accuracy']}/5")
-    print(f"  RAG:  {rag_score['accuracy']}/5")
-```
-
-### Visualize Results
-
-```python
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Load benchmark data
-df = pd.read_csv('data/results/benchmark_summary.csv', index_col=0)
-
-# Create comparison chart
-fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-
-# Overall score
-df.loc['Overall Score'].plot(kind='bar', ax=axes[0, 0], color=['#1f77b4', '#2ca02c', '#ff7f0e'])
-axes[0, 0].set_title('Overall Score (Higher is Better)')
-axes[0, 0].set_ylim(0, 5)
-
-# Hallucination rate
-df.loc['Hallucination Rate (%)'].plot(kind='bar', ax=axes[0, 1], color=['#ff7f0e', '#2ca02c', '#d62728'])
-axes[0, 1].set_title('Hallucination Rate (Lower is Better)')
-axes[0, 1].set_ylim(0, 35)
-
-# Accuracy
-df.loc['Accuracy (avg)'].plot(kind='bar', ax=axes[1, 0], color=['#1f77b4', '#2ca02c', '#ff7f0e'])
-axes[1, 0].set_title('Accuracy Score')
-axes[1, 0].set_ylim(0, 5)
-
-# Completeness
-df.loc['Completeness (avg)'].plot(kind='bar', ax=axes[1, 1], color=['#1f77b4', '#2ca02c', '#ff7f0e'])
-axes[1, 1].set_title('Completeness Score')
-axes[1, 1].set_ylim(0, 5)
-
-plt.tight_layout()
-plt.savefig('data/results/comparison_charts.png', dpi=300)
-print("✓ Charts saved to data/results/comparison_charts.png")
-```
 
 ---
 
@@ -475,17 +387,6 @@ This provides actionable insights beyond simple accuracy metrics.
 
 ---
 
-## 📚 Documentation
-
-| Document | Purpose |
-|----------|---------|
-| **PROJECT_REPORT.md** | 📊 Comprehensive analysis with business recommendations |
-| **COMPLETE_PIPELINE_GUIDE.md** | 🔧 Step-by-step execution guide with timing estimates |
-| **QUICKSTART_CHECKLIST.md** | ⚡ 5-minute quick start checklist |
-| **JUDGE_METRICS_IMPLEMENTATION_SUMMARY.md** | 📋 Judge system technical details |
-| **VISUALIZATION_EXAMPLES.md** | 📈 Python/Excel visualization templates |
-
----
 
 ## 🤝 Contributing
 
@@ -603,20 +504,8 @@ with open('data/results/evaluation_report.json') as f:
 - **Privacy**: Local processing, no API calls
 - **Caveat**: Requires proper training data and guardrails
 
----
 
-## 📝 License
 
-MIT License - See LICENSE file for details
-
----
-
-## 🙋 Support
-
-For issues, questions, or suggestions:
-1. Check the troubleshooting section above
-2. Review COMPLETE_PIPELINE_GUIDE.md for detailed steps
-3. See PROJECT_REPORT.md for technical insights
 
 ---
 
@@ -628,15 +517,7 @@ For issues, questions, or suggestions:
 4. ✅ Deploy selected approach to production
 5. ✅ Monitor performance and iterate
 
-**Ready to evaluate your LLM?**
 
-```bash
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-python3 run_comparison.py --skip-lora
-python3 src/judge_metrics.py
-```
-
-Get results in **~10 minutes**! 🚀
 
 ---
 
